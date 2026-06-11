@@ -5,17 +5,6 @@ on:
     branches:
       - main
       - master
-    paths:
-      - package.json
-      - package-lock.json
-      - src/**
-      - dist/**
-      - scripts/**
-      - README.md
-      - LICENSE
-      - .github/workflows/publish.yml
-      - .github/workflows/finalize.yml
-  workflow_dispatch:
 
 permissions:
   contents: write
