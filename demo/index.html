@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UpriseUI Cropper Demo</title>
+  <link rel="stylesheet" href="../dist/style.css" />
+  <link rel="stylesheet" href="./demo.css" />
+</head>
+<body>
+  <main class="demo-shell">
+    <div class="demo-topbar">
+      <label class="demo-theme-toggle">
+        <input id="autoDarkModeToggle" type="checkbox" checked />
+        Auto dark mode
+      </label>
+      <label class="demo-theme-toggle">
+        <input id="darkModeToggle" type="checkbox" />
+        Dark mode
+      </label>
+    </div>
+
+    <div class="demo-grid">
+      <section class="demo-panel">
+        <header>
+          <p class="eyebrow">UpriseUI vanilla JS demo</p>
+          <h1>UpriseUI cropper</h1>
+          <p>
+            Upload an image, choose a ratio, drag the image inside the crop frame,
+            zoom with the slider or wheel, switch the viewport background, adjust the crop-frame rounding,
+            toggle automatic browser-defined dark mode, and see the export preview update live.
+          </p>
+        </header>
+
+        <div id="cropper" class="uui-cropper"></div>
+
+        <div class="demo-control-row">
+          <label class="demo-switch">
+            <input id="viewportCheckered" type="checkbox" checked />
+            Checkered viewport background
+          </label>
+
+          <div id="viewportBackgroundControls" class="demo-color-row demo-hidden">
+            <label for="viewportBackgroundColor">
+              Non-checkered background / outside crop
+              <input id="viewportBackgroundColor" type="color" value="#ffffff" />
+            </label>
+            <button id="viewportBackgroundTransparent" class="uui-button uui-button--ghost" type="button">No color</button>
+          </div>
+
+          <div class="demo-range">
+            <label for="borderRadius">
+              <span>Crop frame corner radius</span>
+              <output id="borderRadiusOutput">0%</output>
+            </label>
+            <input id="borderRadius" type="range" min="0" max="50" step="1" value="0" />
+          </div>
+        </div>
+
+        <div class="demo-actions">
+          <button id="downloadPng" class="uui-button" type="button">Download PNG</button>
+          <button id="downloadJpeg" class="uui-button uui-button--ghost" type="button">Download JPEG</button>
+          <button id="reset" class="uui-button uui-button--ghost" type="button">Reset image</button>
+        </div>
+      </section>
+
+      <aside class="demo-panel demo-stack">
+        <section>
+          <p class="eyebrow">Export result</p>
+          <h2>Live output preview</h2>
+          <div class="demo-output-wrap">
+            <canvas id="outputCanvas" class="demo-output" width="320" height="320"></canvas>
+          </div>
+        </section>
+
+        <section>
+          <p class="eyebrow">Live crop data</p>
+          <dl id="cropData" class="demo-kv"></dl>
+        </section>
+      </aside>
+
+      <section class="demo-panel demo-panel--full">
+        <section>
+          <p class="eyebrow">Live example integration</p>
+          <pre class="demo-code"><code id="integrationCode">import { UpriseUICropper } from '../dist/index.js';
+
+const cropper = new UpriseUICropper(
+  document.querySelector('#cropper'),
+  {
+    src: '../sample.jpg',
+    initialAspectRatio: 1,
+    viewportCheckered: true,
+    viewportBackgroundColor: 'transparent',
+    viewportMaskColor: null,
+    borderRadius: 0,
+    autoDarkMode: true,
+    forceDarkMode: false
+  }
+);
+
+const blob = await cropper.getBlob('image/png');
+const data = cropper.getCropData();</code></pre>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="./demo.js"></script>
+</body>
+</html>

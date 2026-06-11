@@ -1,0 +1,143 @@
+name: finalize
+
+on:
+  release:
+    types:
+      - released
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve selected tag
+        id: release
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "No tag selected. Run this workflow from a tag, for example v1.0.0."
+            exit 1
+          fi
+
+          if ! printf "%s" "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "Selected ref '$TAG' does not look like a release tag. Run this workflow from a tag like v1.0.0."
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Mark release as final
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG does not exist."
+            exit 1
+          fi
+
+          gh release edit "$RELEASE_TAG" \
+            --prerelease=false \
+            --draft=false
+
+      - name: Checkout selected tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read package metadata
+        id: package
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          NAME="$(node -p "require('./package.json').name")"
+          SCOPE="$(node -p "const n=require('./package.json').name; n.startsWith('@') ? n.split('/')[0] : ''")"
+
+          if [ -z "$VERSION" ]; then
+            echo "package.json has no version"
+            exit 1
+          fi
+
+          if [ -z "$NAME" ]; then
+            echo "package.json has no name"
+            exit 1
+          fi
+
+          if [ -z "$SCOPE" ]; then
+            echo "GitHub Packages npm publishing usually requires a scoped package name, e.g. @owner/package."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          scope: ${{ steps.package.outputs.scope }}
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build package
+        run: npm run build
+
+      - name: Publish final package
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm publish --tag latest
+
+      - name: Update final release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          cat > /tmp/release-notes.md <<EOF
+          Final release for ${PACKAGE_NAME}@${PACKAGE_VERSION}.
+
+          Install:
+
+          \`\`\`bash
+          npm install ${PACKAGE_NAME}
+          \`\`\`
+          EOF
+
+          gh release edit "$RELEASE_TAG" \
+            --title "$RELEASE_TAG" \
+            --notes-file /tmp/release-notes.md \
+            --prerelease=false \
+            --draft=false
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "Published ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }} as latest"
+          echo "Finalized release ${{ steps.release.outputs.tag }}"

@@ -1,0 +1,5 @@
+# Example for publishing locally to a Gitea npm registry.
+# Replace values with your Gitea URL and owner/org.
+
+@upriseui:registry=https://gitea.example.com/api/packages/YOUR_OWNER/npm/
+//gitea.example.com/api/packages/YOUR_OWNER/npm/:_authToken=${GITEA_TOKEN}

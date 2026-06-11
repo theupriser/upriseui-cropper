@@ -1,0 +1,50 @@
+{
+  "name": "@theupriser/upriseui-cropper",
+  "version": "1.0.0",
+  "description": "Dependency-free vanilla JavaScript image cropper with aspect ratios, export canvas/blob helpers, theme options, and crop lifecycle events.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "style": "./dist/style.css",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./style.css": "./dist/style.css",
+    "./dist/style.css": "./dist/style.css",
+    "./dist/index.js": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./dist/style.css",
+    "./src/style.css"
+  ],
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "node ./scripts/build.js",
+    "pack:dry": "npm pack --dry-run",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "cropper",
+    "image-cropper",
+    "vanilla-js",
+    "canvas",
+    "upriseui",
+    "image-upload"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "typescript": "^5.4.0"
+  }
+}

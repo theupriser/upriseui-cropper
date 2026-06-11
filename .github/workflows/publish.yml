@@ -1,0 +1,190 @@
+name: publish
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - package.json
+      - package-lock.json
+      - src/**
+      - dist/**
+      - scripts/**
+      - README.md
+      - LICENSE
+      - .github/workflows/publish.yml
+      - .github/workflows/finalize.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read package metadata
+        id: package
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          NAME="$(node -p "require('./package.json').name")"
+          SCOPE="$(node -p "const n=require('./package.json').name; n.startsWith('@') ? n.split('/')[0] : ''")"
+          SHORT_SHA="$(printf "%s" "$GITHUB_SHA" | cut -c1-7)"
+          PRE_VERSION="${VERSION}-pre-release.${GITHUB_RUN_NUMBER}"
+
+          if [ -z "$VERSION" ]; then
+            echo "package.json has no version"
+            exit 1
+          fi
+
+          if [ -z "$NAME" ]; then
+            echo "package.json has no name"
+            exit 1
+          fi
+
+          if [ -z "$SCOPE" ]; then
+            echo "GitHub Packages npm publishing usually requires a scoped package name, e.g. @owner/package."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "pre_version=$PRE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=sha-$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to overwrite final release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.package.outputs.tag }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/tmp/release.json 2>/tmp/release-error.txt; then
+            echo "No existing release for $RELEASE_TAG."
+            exit 0
+          fi
+
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease > /tmp/release.json
+
+          IS_DRAFT="$(node -p "const r=require('/tmp/release.json'); String(Boolean(r.isDraft))")"
+          IS_PRERELEASE="$(node -p "const r=require('/tmp/release.json'); String(Boolean(r.isPrerelease))")"
+
+          if [ "$IS_DRAFT" != "true" ] && [ "$IS_PRERELEASE" != "true" ]; then
+            echo "Release $RELEASE_TAG is final. Refusing to overwrite it."
+            exit 1
+          fi
+
+          echo "Existing release is draft/pre-release and may be updated."
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          scope: ${{ steps.package.outputs.scope }}
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Set pre-release package version
+        shell: bash
+        run: |
+          npm version "${{ steps.package.outputs.pre_version }}" --no-git-tag-version
+
+      - name: Build package
+        run: npm run build
+
+      - name: Publish pre-release package
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm publish --tag next
+          npm dist-tag add "${{ steps.package.outputs.name }}@${{ steps.package.outputs.pre_version }}" "${{ steps.package.outputs.sha_tag }}"
+
+      - name: Create or update git tag
+        shell: bash
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git fetch --tags --force
+
+          if git rev-parse "refs/tags/${{ steps.package.outputs.tag }}" >/dev/null 2>&1; then
+            git tag -d "${{ steps.package.outputs.tag }}"
+            git push origin ":refs/tags/${{ steps.package.outputs.tag }}"
+          fi
+
+          git tag -a "${{ steps.package.outputs.tag }}" -m "Pre-release ${{ steps.package.outputs.tag }}"
+          git push origin "${{ steps.package.outputs.tag }}"
+
+      - name: Create or update pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.package.outputs.tag }}
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+          PRE_VERSION: ${{ steps.package.outputs.pre_version }}
+          SHA_TAG: ${{ steps.package.outputs.sha_tag }}
+        run: |
+          cat > /tmp/release-notes.md <<EOF
+          Pre-release for ${PACKAGE_NAME}@${PRE_VERSION}.
+
+          Final target version: ${PACKAGE_VERSION}
+
+          Install latest pre-release:
+
+          \`\`\`bash
+          npm install ${PACKAGE_NAME}@next
+          \`\`\`
+
+          Install this exact build:
+
+          \`\`\`bash
+          npm install ${PACKAGE_NAME}@${SHA_TAG}
+          \`\`\`
+          EOF
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --notes-file /tmp/release-notes.md \
+              --prerelease \
+              --draft=false
+
+            echo "Updated pre-release $RELEASE_TAG."
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --notes-file /tmp/release-notes.md \
+              --target "$GITHUB_SHA" \
+              --prerelease
+
+            echo "Created pre-release $RELEASE_TAG."
+          fi
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "Published ${{ steps.package.outputs.name }}@${{ steps.package.outputs.pre_version }} as next"
+          echo "Added npm dist-tag ${{ steps.package.outputs.sha_tag }}"
+          echo "Created/updated pre-release ${{ steps.package.outputs.tag }}"
