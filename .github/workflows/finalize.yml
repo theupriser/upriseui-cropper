@@ -1,10 +1,12 @@
 name: finalize
 
 on:
-  release:
-    types:
-      - released
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to finalize, for example v1.0.1"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -16,27 +18,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Resolve selected tag
+      - name: Resolve tag
         id: release
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
+          TAG="${{ inputs.tag }}"
 
           echo "Repository: $GITHUB_REPOSITORY"
-          echo "Selected ref: $GITHUB_REF_NAME"
+          echo "Workflow ref: $GITHUB_REF"
+          echo "Workflow ref name: $GITHUB_REF_NAME"
           echo "Resolved tag: $TAG"
 
           if [ -z "$TAG" ]; then
-            echo "No tag selected. Run this workflow from a tag, for example v1.0.1."
+            echo "No tag provided."
             exit 1
           fi
 
           if ! printf "%s" "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "Selected ref '$TAG' does not look like a release tag. Run this workflow from a tag like v1.0.1."
+            echo "Tag '$TAG' does not look like a release tag. Use something like v1.0.1."
             exit 1
           fi
 
@@ -53,36 +52,14 @@ jobs:
         id: package
         shell: bash
         run: |
-          echo "Git ref: $GITHUB_REF"
-          echo "Git ref name: $GITHUB_REF_NAME"
-          echo "Git SHA: $GITHUB_SHA"
-          git log -1 --oneline
-
           VERSION="$(node -p "require('./package.json').version")"
           NAME="$(node -p "require('./package.json').name")"
           SCOPE="$(node -p "const n=require('./package.json').name; n.startsWith('@') ? n.split('/')[0] : ''")"
-
-          if [ -z "$VERSION" ]; then
-            echo "package.json has no version"
-            exit 1
-          fi
-
-          if [ -z "$NAME" ]; then
-            echo "package.json has no name"
-            exit 1
-          fi
-
-          if [ -z "$SCOPE" ]; then
-            echo "Package name must be scoped for GitHub Packages, for example @theupriser/upriseui-cropper."
-            exit 1
-          fi
-
           EXPECTED_TAG="v$VERSION"
 
           echo "Detected package name: $NAME"
           echo "Detected package version: $VERSION"
-          echo "Detected package scope: $SCOPE"
-          echo "Expected release tag: $EXPECTED_TAG"
+          echo "Expected tag: $EXPECTED_TAG"
 
           if [ "${{ steps.release.outputs.tag }}" != "$EXPECTED_TAG" ]; then
             echo "Selected tag '${{ steps.release.outputs.tag }}' does not match package.json version '$VERSION'."
@@ -93,9 +70,8 @@ jobs:
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
-          echo "expected_tag=$EXPECTED_TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Setup Node.js for npmjs
+      - name: Setup Node.js for npmjs trusted publishing
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -160,9 +136,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Release tag: $RELEASE_TAG"
-
           RELEASE_ID="$(gh release view "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --json databaseId \
@@ -209,7 +182,4 @@ jobs:
         shell: bash
         run: |
           echo "Finalized release ${{ steps.release.outputs.tag }}"
-          echo "Published package: ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}"
-          echo "Registries:"
-          echo "- npmjs: https://registry.npmjs.org"
-          echo "- GitHub Packages: https://npm.pkg.github.com"
+          echo "Package: ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}"
