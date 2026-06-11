@@ -25,6 +25,10 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
 
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Selected ref: $GITHUB_REF_NAME"
+          echo "Resolved tag: $TAG"
+
           if [ -z "$TAG" ]; then
             echo "No tag selected. Run this workflow from a tag, for example v1.0.0."
             exit 1
@@ -37,20 +41,24 @@ jobs:
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Mark release as final
+      - name: Mark GitHub release as final
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG does not exist."
-            exit 1
-          fi
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Release tag: $RELEASE_TAG"
+
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,isPrerelease
 
           gh release edit "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
             --prerelease=false \
-            --draft=false
+            --latest
 
       - name: Checkout selected tag
         uses: actions/checkout@v4
@@ -78,7 +86,7 @@ jobs:
           fi
 
           if [ -z "$SCOPE" ]; then
-            echo "GitHub Packages npm publishing usually requires a scoped package name, e.g. @owner/package."
+            echo "GitHub Packages npm publishing requires a scoped package name, e.g. @theupriser/upriseui-cropper."
             exit 1
           fi
 
@@ -109,8 +117,7 @@ jobs:
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npm publish --tag latest
+        run: npm publish --tag latest
 
       - name: Update final release notes
         shell: bash
@@ -131,10 +138,12 @@ jobs:
           EOF
 
           gh release edit "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$RELEASE_TAG" \
             --notes-file /tmp/release-notes.md \
+            --draft=false \
             --prerelease=false \
-            --draft=false
+            --latest
 
       - name: Summary
         shell: bash
