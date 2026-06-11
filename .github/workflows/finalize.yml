@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 jobs:
   finalize:
@@ -73,7 +74,6 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           NAME="$(node -p "require('./package.json').name")"
-          SCOPE="$(node -p "const n=require('./package.json').name; n.startsWith('@') ? n.split('/')[0] : ''")"
 
           if [ -z "$VERSION" ]; then
             echo "package.json has no version"
@@ -85,21 +85,14 @@ jobs:
             exit 1
           fi
 
-          if [ -z "$SCOPE" ]; then
-            echo "GitHub Packages npm publishing requires a scoped package name, e.g. @theupriser/upriseui-cropper."
-            exit 1
-          fi
-
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
 
-      - name: Setup Node.js
+      - name: Setup Node.js for npm trusted publishing
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://npm.pkg.github.com
-          scope: ${{ steps.package.outputs.scope }}
+          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         shell: bash
@@ -113,11 +106,9 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Publish final package
+      - name: Publish final package to npm
         shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm publish --tag latest
+        run: npm publish --access public --tag latest
 
       - name: Update final release notes
         shell: bash
@@ -148,5 +139,5 @@ jobs:
       - name: Summary
         shell: bash
         run: |
-          echo "Published ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }} as latest"
+          echo "Published ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }} to npm as latest"
           echo "Finalized release ${{ steps.release.outputs.tag }}"
