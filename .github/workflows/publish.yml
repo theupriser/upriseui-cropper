@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -18,6 +19,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -25,6 +27,14 @@ jobs:
         id: package
         shell: bash
         run: |
+          echo "Git ref: $GITHUB_REF"
+          echo "Git ref name: $GITHUB_REF_NAME"
+          echo "Git SHA: $GITHUB_SHA"
+          git log -1 --oneline
+
+          echo "package.json version from checked-out commit:"
+          node -p "require('./package.json').version"
+
           VERSION="$(node -p "require('./package.json').version")"
           NAME="$(node -p "require('./package.json').name")"
           SCOPE="$(node -p "const n=require('./package.json').name; n.startsWith('@') ? n.split('/')[0] : ''")"
@@ -42,9 +52,14 @@ jobs:
           fi
 
           if [ -z "$SCOPE" ]; then
-            echo "GitHub Packages npm publishing usually requires a scoped package name, e.g. @owner/package."
+            echo "GitHub Packages npm publishing requires a scoped package name, e.g. @theupriser/upriseui-cropper."
             exit 1
           fi
+
+          echo "Detected package name: $NAME"
+          echo "Detected package version: $VERSION"
+          echo "Pre-release package version: $PRE_VERSION"
+          echo "Release tag: v$VERSION"
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "pre_version=$PRE_VERSION" >> "$GITHUB_OUTPUT"
@@ -60,12 +75,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.package.outputs.tag }}
         run: |
-          if ! gh release view "$RELEASE_TAG" >/tmp/release.json 2>/tmp/release-error.txt; then
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/tmp/release.json 2>/tmp/release-error.txt; then
             echo "No existing release for $RELEASE_TAG."
             exit 0
           fi
 
-          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease > /tmp/release.json
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease > /tmp/release.json
 
           IS_DRAFT="$(node -p "const r=require('/tmp/release.json'); String(Boolean(r.isDraft))")"
           IS_PRERELEASE="$(node -p "const r=require('/tmp/release.json'); String(Boolean(r.isPrerelease))")"
@@ -125,7 +142,7 @@ jobs:
           git tag -a "${{ steps.package.outputs.tag }}" -m "Pre-release ${{ steps.package.outputs.tag }}"
           git push origin "${{ steps.package.outputs.tag }}"
 
-      - name: Create or update pre-release
+      - name: Create or update GitHub pre-release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -153,22 +170,24 @@ jobs:
           \`\`\`
           EOF
 
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
               --title "$RELEASE_TAG" \
               --notes-file /tmp/release-notes.md \
               --prerelease \
               --draft=false
 
-            echo "Updated pre-release $RELEASE_TAG."
+            echo "Updated GitHub pre-release $RELEASE_TAG."
           else
             gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
               --title "$RELEASE_TAG" \
               --notes-file /tmp/release-notes.md \
               --target "$GITHUB_SHA" \
               --prerelease
 
-            echo "Created pre-release $RELEASE_TAG."
+            echo "Created GitHub pre-release $RELEASE_TAG."
           fi
 
       - name: Summary
@@ -176,4 +195,4 @@ jobs:
         run: |
           echo "Published ${{ steps.package.outputs.name }}@${{ steps.package.outputs.pre_version }} as next"
           echo "Added npm dist-tag ${{ steps.package.outputs.sha_tag }}"
-          echo "Created/updated pre-release ${{ steps.package.outputs.tag }}"
+          echo "Created/updated GitHub pre-release ${{ steps.package.outputs.tag }}"
