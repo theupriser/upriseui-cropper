@@ -31,35 +31,16 @@ jobs:
           echo "Resolved tag: $TAG"
 
           if [ -z "$TAG" ]; then
-            echo "No tag selected. Run this workflow from a tag, for example v1.0.0."
+            echo "No tag selected. Run this workflow from a tag, for example v1.0.1."
             exit 1
           fi
 
           if ! printf "%s" "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "Selected ref '$TAG' does not look like a release tag. Run this workflow from a tag like v1.0.0."
+            echo "Selected ref '$TAG' does not look like a release tag. Run this workflow from a tag like v1.0.1."
             exit 1
           fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Mark GitHub release as final
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Release tag: $RELEASE_TAG"
-
-          gh release view "$RELEASE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json tagName,isDraft,isPrerelease
-
-          gh release edit "$RELEASE_TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --draft=false \
-            --prerelease=false \
-            --latest
 
       - name: Checkout selected tag
         uses: actions/checkout@v4
@@ -72,8 +53,14 @@ jobs:
         id: package
         shell: bash
         run: |
+          echo "Git ref: $GITHUB_REF"
+          echo "Git ref name: $GITHUB_REF_NAME"
+          echo "Git SHA: $GITHUB_SHA"
+          git log -1 --oneline
+
           VERSION="$(node -p "require('./package.json').version")"
           NAME="$(node -p "require('./package.json').name")"
+          SCOPE="$(node -p "const n=require('./package.json').name; n.startsWith('@') ? n.split('/')[0] : ''")"
 
           if [ -z "$VERSION" ]; then
             echo "package.json has no version"
@@ -85,10 +72,30 @@ jobs:
             exit 1
           fi
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          if [ -z "$SCOPE" ]; then
+            echo "Package name must be scoped for GitHub Packages, for example @theupriser/upriseui-cropper."
+            exit 1
+          fi
 
-      - name: Setup Node.js for npm trusted publishing
+          EXPECTED_TAG="v$VERSION"
+
+          echo "Detected package name: $NAME"
+          echo "Detected package version: $VERSION"
+          echo "Detected package scope: $SCOPE"
+          echo "Expected release tag: $EXPECTED_TAG"
+
+          if [ "${{ steps.release.outputs.tag }}" != "$EXPECTED_TAG" ]; then
+            echo "Selected tag '${{ steps.release.outputs.tag }}' does not match package.json version '$VERSION'."
+            echo "Expected tag: $EXPECTED_TAG"
+            exit 1
+          fi
+
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+          echo "expected_tag=$EXPECTED_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js for npmjs
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -106,9 +113,67 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Publish final package to npm
+      - name: Publish final package to npmjs
         shell: bash
-        run: npm publish --access public --tag latest
+        run: |
+          PACKAGE="${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}"
+
+          echo "Registry:"
+          npm config get registry
+
+          echo "Checking npmjs package: $PACKAGE"
+
+          if npm view "$PACKAGE" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "$PACKAGE already exists on npmjs. Skipping npmjs publish."
+          else
+            npm publish --access public --tag latest --registry=https://registry.npmjs.org
+          fi
+
+      - name: Setup Node.js for GitHub Packages
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          scope: ${{ steps.package.outputs.scope }}
+
+      - name: Publish final package to GitHub Packages
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGE="${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}"
+
+          echo "Registry:"
+          npm config get registry
+
+          echo "Checking GitHub Packages package: $PACKAGE"
+
+          if npm view "$PACKAGE" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "$PACKAGE already exists on GitHub Packages. Skipping GitHub Packages publish."
+          else
+            npm publish --tag latest --registry=https://npm.pkg.github.com
+          fi
+
+      - name: Mark GitHub release as final
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Release tag: $RELEASE_TAG"
+
+          RELEASE_ID="$(gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json databaseId \
+            --jq '.databaseId')"
+
+          gh api \
+            --method PATCH \
+            "/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false \
+            -F prerelease=false \
+            -F make_latest=true
 
       - name: Update final release notes
         shell: bash
@@ -121,10 +186,16 @@ jobs:
           cat > /tmp/release-notes.md <<EOF
           Final release for ${PACKAGE_NAME}@${PACKAGE_VERSION}.
 
-          Install:
+          Install from npmjs:
 
           \`\`\`bash
           npm install ${PACKAGE_NAME}
+          \`\`\`
+
+          Install from GitHub Packages:
+
+          \`\`\`bash
+          npm install ${PACKAGE_NAME} --registry=https://npm.pkg.github.com
           \`\`\`
           EOF
 
@@ -132,12 +203,13 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "$RELEASE_TAG" \
             --notes-file /tmp/release-notes.md \
-            --draft=false \
-            --prerelease=false \
             --latest
 
       - name: Summary
         shell: bash
         run: |
-          echo "Published ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }} to npm as latest"
           echo "Finalized release ${{ steps.release.outputs.tag }}"
+          echo "Published package: ${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}"
+          echo "Registries:"
+          echo "- npmjs: https://registry.npmjs.org"
+          echo "- GitHub Packages: https://npm.pkg.github.com"
