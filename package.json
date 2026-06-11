@@ -1,6 +1,6 @@
 {
   "name": "@theupriser/upriseui-cropper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Dependency-free vanilla JavaScript image cropper with aspect ratios, export canvas/blob helpers, theme options, and crop lifecycle events.",
   "type": "module",
   "main": "./dist/index.js",
