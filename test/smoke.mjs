@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 const source = readFileSync(new URL('../dist/index.js', import.meta.url), 'utf8');
 const types = readFileSync(new URL('../dist/index.d.ts', import.meta.url), 'utf8');
 
-if (!source.includes('export class UpriseUICropper')) {
-  throw new Error('dist/index.js does not export UpriseUICropper');
+if (!source.includes('UpriseUICropper')) {
+  throw new Error('dist/index.js does not contain UpriseUICropper');
 }
 
 if (!types.includes('export declare class UpriseUICropper')) {

@@ -136,7 +136,7 @@ export class UpriseUICropper {
     this.aspectRatio = this.options.initialAspectRatio;
     this.zoom = this.options.initialZoom;
     this.zoomLevel = 0;
-    this.minZoom = 1;
+    this.minZoom = Math.min(this.options.minZoom, this.options.initialZoom);
     this.maxZoom = this.options.maxZoom;
     this.pan = { x: 0, y: 0 };
     this.natural = { width: 0, height: 0 };
@@ -200,6 +200,7 @@ export class UpriseUICropper {
   }
 
   getAspectRatioControlContainer(): HTMLElement | null {
+    if (!this.options.showAspectRatioControl) return null;
     const selector = this.options.aspectRatioControlSelector?.trim();
     if (selector) {
       const container = this.root.ownerDocument?.querySelector<HTMLElement>(selector);
@@ -226,11 +227,17 @@ export class UpriseUICropper {
       internalContainer!.classList.toggle('uui-cropper__ratio-row--hidden', !showAspectRatioControl || Boolean(this.options.aspectRatioControlSelector?.trim()));
     }
 
-    if (!showAspectRatioControl || !this.ratioContainer) {
-      if (this.ratioContainer) this.ratioContainer.innerHTML = '';
+    if (!showAspectRatioControl) {
+      if (this.ratioContainer && isInternalContainer) {
+        this.ratioContainer.innerHTML = '';
+      } else if (this.ratioContainer) {
+        // If external container, we should probably clear it if we're told not to show it
+        this.ratioContainer.innerHTML = '';
+      }
       return;
     }
 
+    if (!this.ratioContainer) return;
     this.ratioContainer.innerHTML = '';
 
     if (this.options.aspectRatioControlType === 'dropdown') {
@@ -274,8 +281,16 @@ export class UpriseUICropper {
     this.status.classList.toggle('uui-cropper__status--hidden', !this.options.showImageInfo);
 
     if (this.options.showSelectButton) selectContainer?.append(this.selectButton);
+    else this.selectButton.remove();
+
     if (showZoomSlider) zoomContainer?.append(this.zoomInput);
-    if (this.options.showImageInfo) statusContainer?.append(this.status);
+    else this.zoomInput.remove();
+
+    if (this.options.imageInfoSelector?.trim() || this.options.showImageInfo) {
+      statusContainer?.append(this.status);
+    } else {
+      this.status.remove();
+    }
   }
 
   shouldShowZoomSlider(): boolean {
@@ -324,6 +339,26 @@ export class UpriseUICropper {
     // - non-checkered mode uses the configured background color, including transparent
     this.options.viewportMaskColor = color;
     this.applyViewportMaskColor();
+  }
+
+  setShowAspectRatioControl(enabled: boolean = true): void {
+    this.options.showAspectRatioControl = Boolean(enabled);
+    this.renderAspectRatioControl();
+  }
+
+  setShowSelectButton(enabled: boolean = true): void {
+    this.options.showSelectButton = Boolean(enabled);
+    this.renderControlPlacements();
+  }
+
+  setShowZoom(enabled: boolean = true): void {
+    this.options.showZoom = Boolean(enabled);
+    this.renderControlPlacements();
+  }
+
+  setShowImageInfo(enabled: boolean = true): void {
+    this.options.showImageInfo = Boolean(enabled);
+    this.renderControlPlacements();
   }
 
   applyViewportMaskColor(): void {
@@ -481,7 +516,6 @@ export class UpriseUICropper {
     };
 
     this.pan = { x: 0, y: 0 };
-    this.zoom = 1;
     this.layout();
   }
 
@@ -580,6 +614,7 @@ export class UpriseUICropper {
     }
     this.zoomLevel = this.zoomToLevel(this.zoom);
     this.renderControlPlacements();
+    this.renderAspectRatioControl(); // Ensure aspect ratio control is also re-rendered
     this.constrainPan();
     this.applyBorderRadius();
     this.update();
