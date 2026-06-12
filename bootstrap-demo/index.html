@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UpriseUI Cropper Bootstrap Demo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body {
+      background: #f8f9fa;
+    }
+
+    .demo-shell {
+      min-height: 100vh;
+    }
+
+    .demo-image {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+    }
+
+    .demo-cropper {
+      min-height: 480px;
+    }
+  </style>
+</head>
+<body>
+  <main class="demo-shell d-flex align-items-center py-5">
+    <div class="container">
+      <div class="row justify-content-center">
+        <div class="col-12 col-lg-9 col-xl-8">
+          <div class="card shadow-sm">
+            <img class="card-img-top demo-image" src="../sample.jpg" alt="Sample image for cropping" />
+            <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+              <div>
+                <h1 class="h5 mb-1">Bootstrap 5 cropper test</h1>
+                <p class="mb-0 text-body-secondary">A single image, a modal, and the cropper.</p>
+              </div>
+              <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#cropperModal">
+                Open cropper
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div class="modal fade" id="cropperModal" tabindex="-1" aria-labelledby="cropperModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title fs-5" id="cropperModalLabel">Crop image</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <div id="ratioSlot"></div>
+          </div>
+          <div id="cropper" class="uui-cropper demo-cropper"></div>
+          <div class="row g-3 align-items-center mb-3">
+            <div class="col-12 col-md-4">
+              <div id="selectSlot"></div>
+            </div>
+            <div class="col-12 col-md-4">
+              <div id="zoomSlot"></div>
+            </div>
+            <div class="col-12 col-md-4 text-md-end">
+              <div id="infoSlot"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script type="module" src="./demo.js"></script>
+</body>
+</html>

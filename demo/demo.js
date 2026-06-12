@@ -3,10 +3,15 @@ import { UpriseUICropper } from '../dist/index.js';
     const systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const autoDarkModeToggle = document.querySelector('#autoDarkModeToggle');
     const darkModeToggle = document.querySelector('#darkModeToggle');
-    const cropperRoot = document.querySelector('#cropper');
+    let cropperRoot = document.querySelector('#cropper');
     const outputCanvas = document.querySelector('#outputCanvas');
     const cropDataEl = document.querySelector('#cropData');
     const integrationCode = document.querySelector('#integrationCode');
+    const ratioControlTypeSelect = document.querySelector('#ratioControlType');
+    const ratioSlot = document.querySelector('#ratioSlot');
+    const selectSlot = document.querySelector('#selectSlot');
+    const zoomSlot = document.querySelector('#zoomSlot');
+    const infoSlot = document.querySelector('#infoSlot');
     const viewportCheckeredInput = document.querySelector('#viewportCheckered');
     const viewportBackgroundControls = document.querySelector('#viewportBackgroundControls');
     const viewportBackgroundColorInput = document.querySelector('#viewportBackgroundColor');
@@ -16,8 +21,34 @@ import { UpriseUICropper } from '../dist/index.js';
 
     let viewportBackgroundColor = 'transparent';
     let previewFrame = 0;
+    let aspectRatioControlType = ratioControlTypeSelect.value;
+    let cropper;
+
+    function renderCropperShell() {
+      cropperRoot.innerHTML = `
+        <div class="uui-cropper__ratio-row" role="group" aria-label="Crop aspect ratio"></div>
+        <div class="uui-cropper__layout">
+          <div class="uui-cropper__viewport" aria-label="Image crop viewport">
+            <img class="uui-cropper__image uui-cropper__image--source" alt="Image source for cropping" draggable="false" />
+            <div class="uui-cropper__frame">
+              <img class="uui-cropper__frame-image" alt="Visible crop area" draggable="false" />
+              <span class="uui-cropper__grid-v"></span>
+            </div>
+          </div>
+        </div>
+        <div class="uui-cropper__controls">
+          <label class="uui-cropper__select">
+            Select
+            <input class="uui-cropper__file" type="file" accept="image/*" />
+          </label>
+          <input class="uui-cropper__zoom" type="range" min="1" max="5" step="0.01" value="1" aria-label="Zoom" />
+          <output class="uui-cropper__status">Image: 0 × 0px • Zoom: 100% • Crop: 0 × 0px</output>
+        </div>
+      `;
+    }
 
     function applyResolvedTheme() {
+      if (!cropper) return;
       const shouldUseDark = autoDarkModeToggle.checked
         ? systemThemeQuery.matches
         : cropper.options.forceDarkMode;
@@ -34,11 +65,13 @@ import { UpriseUICropper } from '../dist/index.js';
 
     function setAutoDarkMode(enabled) {
       autoDarkModeToggle.checked = Boolean(enabled);
-      cropper?.setAutoDarkMode?.(autoDarkModeToggle.checked);
       darkModeToggle.disabled = autoDarkModeToggle.checked;
 
-      if (!autoDarkModeToggle.checked) {
-        cropper?.setForceDarkMode?.(darkModeToggle.checked);
+      if (cropper) {
+        cropper.setAutoDarkMode?.(autoDarkModeToggle.checked);
+        if (!autoDarkModeToggle.checked) {
+          cropper.setForceDarkMode?.(darkModeToggle.checked);
+        }
       }
 
       applyResolvedTheme();
@@ -59,27 +92,61 @@ import { UpriseUICropper } from '../dist/index.js';
       viewportBackgroundControls.classList.toggle('demo-hidden', viewportCheckeredInput.checked);
     }
 
-    const cropper = new UpriseUICropper(cropperRoot, {
-      src: '../sample.jpg',
-      aspectRatios: [
-        { label: '1:1 Square', value: 1 },
-        { label: '4:3 Standard', value: 4 / 3 },
-        { label: '16:9 Landscape', value: 16 / 9 },
-        { label: '9:16 Story', value: 9 / 16 },
-        { label: '3:4 Portrait', value: 3 / 4 },
-        { label: '2:3 Photo', value: 2 / 3 }
-      ],
-      initialAspectRatio: 1,
-      viewportCheckered: viewportCheckeredInput.checked,
-      viewportBackgroundColor,
-      viewportMaskColor: null,
-      borderRadius: Number(borderRadiusInput.value),
-      autoDarkMode: autoDarkModeToggle.checked,
-      forceDarkMode: darkModeToggle.checked,
-      maxZoom: 6
-    });
+    function buildCropper() {
+      const isExternal = aspectRatioControlType === 'external';
+      const showAspectRatioControl = aspectRatioControlType !== 'false';
+      const previousRatio = cropper?.aspectRatio ?? 1;
+      ratioSlot.classList.toggle('demo-hidden', !isExternal);
+      if (!isExternal) {
+        ratioSlot.replaceChildren();
+      }
+
+      if (cropper) {
+        cropper.destroy();
+      }
+
+      cropperRoot.replaceChildren();
+      renderCropperShell();
+
+      cropper = new UpriseUICropper(cropperRoot, {
+        src: '../sample.jpg',
+        aspectRatios: [
+          { label: '1:1 Square', value: 1 },
+          { label: '4:3 Standard', value: 4 / 3 },
+          { label: '16:9 Landscape', value: 16 / 9 },
+          { label: '9:16 Story', value: 9 / 16 },
+          { label: '3:4 Portrait', value: 3 / 4 },
+          { label: '2:3 Photo', value: 2 / 3 }
+        ],
+        initialAspectRatio: previousRatio,
+        showAspectRatioControl,
+        aspectRatioControlType: 'buttons',
+        aspectRatioControlSelector: isExternal ? '#ratioSlot' : '',
+        showSelectButton: true,
+        selectButtonSelector: '#selectSlot',
+        showZoom: true,
+        zoomSelector: '#zoomSlot',
+        showImageInfo: true,
+        imageInfoSelector: '#infoSlot',
+        viewportCheckered: viewportCheckeredInput.checked,
+        viewportBackgroundColor,
+        viewportMaskColor: null,
+        borderRadius: Number(borderRadiusInput.value),
+        autoDarkMode: autoDarkModeToggle.checked,
+        forceDarkMode: darkModeToggle.checked,
+        maxZoom: 6
+      });
+
+      cropper.setImage('../sample.jpg').then(() => {
+        cropper.setAspectRatio(previousRatio);
+      });
+      return cropper;
+    }
 
     function getActiveRatioOption() {
+      if (!cropper) {
+        return { label: 'Custom', value: 1 };
+      }
       return cropper.options.aspectRatios.find((ratio) => ratio.value === cropper.aspectRatio) || {
         label: 'Custom',
         value: cropper.aspectRatio
@@ -100,14 +167,16 @@ import { UpriseUICropper } from '../dist/index.js';
       return match ? match[1] : Number(value.toFixed(4)).toString();
     }
 
-    function renderCropData(data = cropper.getCropData()) {
+    function renderCropData(data) {
+      if (!cropper) return;
+      const nextData = data || cropper.getCropData();
       cropDataEl.innerHTML = Object.entries({
-        x: data.x,
-        y: data.y,
-        width: data.width,
-        height: data.height,
-        zoom: `${Math.round(data.zoom * 100)}%`,
-        ratio: Number(data.aspectRatio.toFixed(4)),
+        x: nextData.x,
+        y: nextData.y,
+        width: nextData.width,
+        height: nextData.height,
+        zoom: `${Math.round(nextData.zoom * 100)}%`,
+        ratio: Number(nextData.aspectRatio.toFixed(4)),
         radiusSlider: `${cropper.options.borderRadius}/50`,
         viewportCheckered: cropper.options.viewportCheckered,
         viewportBackgroundColor: cropper.options.viewportBackgroundColor,
@@ -124,7 +193,10 @@ import { UpriseUICropper } from '../dist/index.js';
     }
 
     function renderIntegrationCode() {
+      if (!cropper) return;
       const ratio = getActiveRatioOption();
+      const showRatioCode = aspectRatioControlType === 'false' ? 'false' : 'true';
+      const ratioSelectorCode = aspectRatioControlType === 'external' ? `\n    aspectRatioControlSelector: '#ratioSlot',` : '';
       const code = `import { UpriseUICropper } from '../dist/index.js';
 
 const cropper = new UpriseUICropper(
@@ -140,6 +212,14 @@ const cropper = new UpriseUICropper(
       { label: '2:3 Photo', value: 2 / 3 }
     ],
     initialAspectRatio: ${formatRatioValue(ratio.value)},
+    showAspectRatioControl: ${showRatioCode},
+    aspectRatioControlType: 'buttons',${ratioSelectorCode}
+    showSelectButton: true,
+    selectButtonSelector: '#selectSlot',
+    showZoom: true,
+    zoomSelector: '#zoomSlot',
+    showImageInfo: true,
+    imageInfoSelector: '#infoSlot',
     viewportCheckered: ${cropper.options.viewportCheckered},
     viewportBackgroundColor: '${cropper.options.viewportBackgroundColor}',
     viewportMaskColor: null,
@@ -171,6 +251,7 @@ const data = cropper.getCropData();`;
     }
 
     function renderOutputPreview() {
+      if (!cropper) return;
       const crop = cropper.getCropData();
       const exportWidth = 640;
       const exportHeight = Math.round(exportWidth / crop.aspectRatio);
@@ -291,6 +372,7 @@ const data = cropper.getCropData();`;
     });
 
     document.querySelector('#reset').addEventListener('click', async () => {
+      if (!cropper) return;
       await cropper.setImage('../sample.jpg');
       cropper.setAspectRatio(1);
       cropper.setViewportCheckered(viewportCheckeredInput.checked);
@@ -304,14 +386,23 @@ const data = cropper.getCropData();`;
       renderIntegrationCode();
     });
 
+    ratioControlTypeSelect.addEventListener('change', (event) => {
+      aspectRatioControlType = event.target.value;
+      buildCropper();
+      renderCropData();
+      renderIntegrationCode();
+      scheduleOutputPreview();
+    });
+
     const resizeObserver = new ResizeObserver(() => {
       renderOutputPreview();
     });
     resizeObserver.observe(document.querySelector('.demo-output-wrap'));
 
     window.addEventListener('load', () => {
-      setAutoDarkMode(true);
       syncViewportBackgroundControls();
+      buildCropper();
+      setAutoDarkMode(true);
       renderCropData();
       renderIntegrationCode();
       renderOutputPreview();

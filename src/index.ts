@@ -11,6 +11,7 @@ export type UpriseUICropData = {
   naturalWidth: number;
   naturalHeight: number;
   zoom: number;
+  zoomLevel: number;
   aspectRatio: number;
 };
 
@@ -18,13 +19,22 @@ export type UpriseUICropperOptions = {
   src?: string | File | Blob | null;
   aspectRatios?: UpriseUIAspectRatio[];
   initialAspectRatio?: number;
+  showAspectRatioControl?: boolean;
+  aspectRatioControlType?: 'buttons' | 'dropdown' | 'none' | false;
+  aspectRatioControlSelector?: string;
+  showSelectButton?: boolean;
+  selectButtonSelector?: string;
+  showZoom?: boolean;
+  zoomSelector?: string;
+  showImageInfo?: boolean;
+  imageInfoSelector?: string;
   viewportCheckered?: boolean;
   viewportBackgroundColor?: string;
-  viewportBackground?: 'parent' | 'checkerboard' | string;
   viewportMaskColor?: string | null;
   borderRadius?: number;
   autoDarkMode?: boolean;
   forceDarkMode?: boolean;
+  initialZoom?: number;
   minZoom?: number;
   maxZoom?: number;
 };
@@ -50,6 +60,8 @@ type DragState = {
 } | null;
 
 export class UpriseUICropper {
+  static readonly MIN_VISIBLE_ZOOM = 0.1;
+
   root: HTMLElement;
   options: Required<Omit<UpriseUICropperOptions, 'src' | 'viewportMaskColor'>> & {
     src: string | File | Blob | null;
@@ -57,7 +69,9 @@ export class UpriseUICropper {
   };
   aspectRatio: number;
   minZoom: number;
+  maxZoom: number;
   zoom: number;
+  zoomLevel: number;
   objectUrl: string | null = null;
   natural: { width: number; height: number };
   base: Rect;
@@ -67,6 +81,8 @@ export class UpriseUICropper {
   cropEndTimer: number = 0;
   cropStartTimer: number = 0;
   isCropInteracting: boolean = false;
+  hasLoggedZoomSliderDisabled: boolean = false;
+  hasAppliedInitialZoom: boolean = false;
   resizeObserver!: ResizeObserver;
 
   fileInput!: HTMLInputElement;
@@ -74,7 +90,10 @@ export class UpriseUICropper {
   image!: HTMLImageElement;
   frameEl!: HTMLElement;
   frameImage!: HTMLImageElement;
-  ratioRow!: HTMLElement;
+  ratioContainer!: HTMLElement | null;
+  ratioButtons: HTMLElement[] = [];
+  ratioSelect!: HTMLSelectElement | null;
+  selectButton!: HTMLLabelElement;
   zoomInput!: HTMLInputElement;
   status!: HTMLOutputElement;
 
@@ -93,20 +112,32 @@ export class UpriseUICropper {
         { label: '2:3 Portrait', value: 2 / 3 }
       ],
       initialAspectRatio: 1,
+      showAspectRatioControl: true,
+      aspectRatioControlType: 'buttons',
+      aspectRatioControlSelector: '',
+      showSelectButton: true,
+      selectButtonSelector: '',
+      showZoom: true,
+      zoomSelector: '',
+      showImageInfo: true,
+      imageInfoSelector: '',
       viewportCheckered: true,
       viewportBackgroundColor: 'transparent',
       viewportMaskColor: null,
       borderRadius: 0,
       autoDarkMode: true,
       forceDarkMode: false,
+      initialZoom: 1,
       minZoom: 1,
       maxZoom: 5,
       ...options
     } as UpriseUICropper['options'];
 
     this.aspectRatio = this.options.initialAspectRatio;
-    this.zoom = 1;
+    this.zoom = this.options.initialZoom;
+    this.zoomLevel = 0;
     this.minZoom = 1;
+    this.maxZoom = this.options.maxZoom;
     this.pan = { x: 0, y: 0 };
     this.natural = { width: 0, height: 0 };
     this.base = { width: 0, height: 0, left: 0, top: 0 };
@@ -146,12 +177,11 @@ export class UpriseUICropper {
           Select
           <input class="uui-cropper__file" type="file" accept="image/*" />
         </label>
-        <input class="uui-cropper__zoom" type="range" min="1" max="5" step="0.01" value="1" aria-label="Zoom" />
+        <input class="uui-cropper__zoom" type="range" min="0" max="100" step="0.01" value="0" aria-label="Zoom" />
         <output class="uui-cropper__status">Image: 0 × 0px • Zoom: 100% • Crop: 0 × 0px</output>
       </div>
     `;
 
-    this.ratioRow = this.requiredElement<HTMLElement>('.uui-cropper__ratio-row');
     this.viewport = this.requiredElement<HTMLElement>('.uui-cropper__viewport');
     this.image = this.requiredElement<HTMLImageElement>('.uui-cropper__image');
     this.frameImage = this.requiredElement<HTMLImageElement>('.uui-cropper__frame-image');
@@ -159,18 +189,68 @@ export class UpriseUICropper {
     this.status = this.requiredElement<HTMLOutputElement>('.uui-cropper__status');
     this.zoomInput = this.requiredElement<HTMLInputElement>('.uui-cropper__zoom');
     this.fileInput = this.requiredElement<HTMLInputElement>('.uui-cropper__file');
-
-    // Backward compatibility for older string API:
-    // viewportBackground: 'parent' | 'checkerboard'
-    if (typeof this.options.viewportBackground === 'string') {
-      this.options.viewportCheckered = this.options.viewportBackground !== 'parent';
-    }
+    this.selectButton = this.requiredElement<HTMLLabelElement>('.uui-cropper__select');
 
     this.setViewportCheckered(this.options.viewportCheckered);
     this.setViewportBackgroundColor(this.options.viewportBackgroundColor);
     this.setViewportMaskColor(this.options.viewportMaskColor);
     this.setBorderRadius(this.options.borderRadius);
+    this.renderAspectRatioControl();
+    this.renderControlPlacements();
+  }
 
+  getAspectRatioControlContainer(): HTMLElement | null {
+    const selector = this.options.aspectRatioControlSelector?.trim();
+    if (selector) {
+      const container = this.root.ownerDocument?.querySelector<HTMLElement>(selector);
+      if (!container) {
+        throw new Error(`UpriseUICropper missing aspect ratio control container: ${selector}`);
+      }
+      return container;
+    }
+
+    return this.requiredElement<HTMLElement>('.uui-cropper__ratio-row');
+  }
+
+  renderAspectRatioControl(): void {
+    this.ratioContainer = this.getAspectRatioControlContainer();
+    this.ratioButtons = [];
+    this.ratioSelect = null;
+
+    const internalContainer = this.root.querySelector<HTMLElement>('.uui-cropper__ratio-row');
+    const isInternalContainer = this.ratioContainer === internalContainer;
+    const showAspectRatioControl = this.options.showAspectRatioControl !== false
+      && this.options.aspectRatioControlType !== 'none'
+      && this.options.aspectRatioControlType !== false;
+    if (isInternalContainer) {
+      internalContainer!.classList.toggle('uui-cropper__ratio-row--hidden', !showAspectRatioControl || Boolean(this.options.aspectRatioControlSelector?.trim()));
+    }
+
+    if (!showAspectRatioControl || !this.ratioContainer) {
+      if (this.ratioContainer) this.ratioContainer.innerHTML = '';
+      return;
+    }
+
+    this.ratioContainer.innerHTML = '';
+
+    if (this.options.aspectRatioControlType === 'dropdown') {
+      const select = document.createElement('select');
+      select.className = 'uui-cropper__ratio-select';
+      select.setAttribute('aria-label', 'Crop aspect ratio');
+      for (const ratio of this.options.aspectRatios) {
+        const option = document.createElement('option');
+        option.value = String(ratio.value);
+        option.textContent = ratio.label;
+        option.selected = ratio.value === this.aspectRatio;
+        select.append(option);
+      }
+      this.ratioContainer.append(select);
+      this.ratioSelect = select;
+      return;
+    }
+
+    this.ratioContainer.setAttribute('role', 'group');
+    this.ratioContainer.setAttribute('aria-label', 'Crop aspect ratio');
     for (const ratio of this.options.aspectRatios) {
       const button = document.createElement('button');
       button.className = 'uui-cropper__ratio';
@@ -178,8 +258,49 @@ export class UpriseUICropper {
       button.textContent = ratio.label;
       button.dataset.ratio = String(ratio.value);
       button.setAttribute('aria-pressed', String(ratio.value === this.aspectRatio));
-      this.ratioRow.append(button);
+      this.ratioContainer.append(button);
+      this.ratioButtons.push(button);
     }
+  }
+
+  renderControlPlacements(): void {
+    const selectContainer = this.getControlContainer(this.options.selectButtonSelector, '.uui-cropper__controls');
+    const zoomContainer = this.getControlContainer(this.options.zoomSelector, '.uui-cropper__controls');
+    const statusContainer = this.getControlContainer(this.options.imageInfoSelector, '.uui-cropper__controls');
+    const showZoomSlider = this.shouldShowZoomSlider();
+
+    this.selectButton.classList.toggle('uui-cropper__select--hidden', !this.options.showSelectButton);
+    this.zoomInput.classList.toggle('uui-cropper__zoom--hidden', !showZoomSlider);
+    this.status.classList.toggle('uui-cropper__status--hidden', !this.options.showImageInfo);
+
+    if (this.options.showSelectButton) selectContainer?.append(this.selectButton);
+    if (showZoomSlider) zoomContainer?.append(this.zoomInput);
+    if (this.options.showImageInfo) statusContainer?.append(this.status);
+  }
+
+  shouldShowZoomSlider(): boolean {
+    if (!this.options.showZoom) return false;
+    if (this.minZoom !== this.maxZoom) return true;
+
+    if (!this.hasLoggedZoomSliderDisabled) {
+      console.error('UpriseUICropper: zoom slider is disabled because minZoom and maxZoom are the same.', {
+        minZoom: this.minZoom,
+        maxZoom: this.maxZoom
+      });
+      this.hasLoggedZoomSliderDisabled = true;
+    }
+
+    return false;
+  }
+
+  getControlContainer(selector: string | undefined, fallbackSelector: string): HTMLElement | null {
+    const trimmed = selector?.trim();
+    if (trimmed) {
+      const container = this.root.ownerDocument?.querySelector<HTMLElement>(trimmed);
+      if (!container) throw new Error(`UpriseUICropper missing control container: ${trimmed}`);
+      return container;
+    }
+    return this.requiredElement<HTMLElement>(fallbackSelector);
   }
 
   setViewportCheckered(enabled: boolean = true): void {
@@ -220,11 +341,6 @@ export class UpriseUICropper {
       : 'none';
 
     this.frameEl.style.setProperty('--uui-cropper-frame-shadow', shadow);
-  }
-
-  setViewportBackground(mode = 'checkerboard') {
-    // Backward-compatible alias. Prefer setViewportCheckered(true/false).
-    this.setViewportCheckered(mode !== 'parent');
   }
 
   setForceDarkMode(enabled: boolean = true): void {
@@ -276,20 +392,19 @@ export class UpriseUICropper {
     this.frameEl.style.setProperty('--uui-cropper-border-radius', `${radius}px`);
   }
 
-  setRounded(enabled = true) {
-    // Backward-compatible helper. Prefer setBorderRadius(0..50).
-    this.setBorderRadius(enabled ? 50 : 0);
-  }
-
   bind(): void {
-    this.ratioRow.addEventListener('click', (event) => {
+    this.ratioContainer?.addEventListener('click', (event) => {
       const button = (event.target as Element | null)?.closest('[data-ratio]') as HTMLElement | null;
       if (!button) return;
       this.setAspectRatio(Number(button.dataset.ratio));
     });
 
+    this.ratioSelect?.addEventListener('change', () => {
+      this.setAspectRatio(Number(this.ratioSelect?.value));
+    });
+
     this.zoomInput.addEventListener('input', () => {
-      this.setZoom(Number(this.zoomInput.value), { anchor: this.viewportCenter() });
+      this.setZoom(this.levelToZoom(Number(this.zoomInput.value) / 100), { anchor: this.viewportCenter() });
     });
 
     this.zoomInput.addEventListener('change', () => {
@@ -376,9 +491,10 @@ export class UpriseUICropper {
     this.markCropStarted();
     this.aspectRatio = ratio;
 
-    for (const button of Array.from(this.ratioRow.querySelectorAll<HTMLElement>('[data-ratio]'))) {
+    for (const button of this.ratioButtons) {
       button.setAttribute('aria-pressed', String(Number(button.dataset.ratio) === ratio));
     }
+    if (this.ratioSelect) this.ratioSelect.value = String(ratio);
 
     this.layout();
     this.emitCropEnded();
@@ -387,7 +503,7 @@ export class UpriseUICropper {
   setZoom(zoom: number, { anchor = this.viewportCenter() }: { anchor?: Point } = {}): void {
     this.markCropStarted();
 
-    const next = this.clamp(zoom, this.minZoom, this.options.maxZoom);
+    const next = this.clamp(zoom, this.minZoom, this.maxZoom);
     if (Math.abs(next - this.zoom) < 0.0001) {
       this.scheduleCropEnded();
       return;
@@ -395,6 +511,7 @@ export class UpriseUICropper {
 
     const before = this.viewportToImage(anchor);
     this.zoom = next;
+    this.zoomLevel = this.zoomToLevel(next);
     const after = this.imageToViewport(before);
     this.pan.x += anchor.x - after.x;
     this.pan.y += anchor.y - after.y;
@@ -402,6 +519,15 @@ export class UpriseUICropper {
     this.constrainPan();
     this.update();
     this.scheduleCropEnded();
+  }
+
+  zoomToLevel(zoom: number): number {
+    if (this.maxZoom <= this.minZoom) return 0;
+    return this.clamp((zoom - this.minZoom) / (this.maxZoom - this.minZoom), 0, 1);
+  }
+
+  levelToZoom(level: number): number {
+    return this.minZoom + this.clamp(level, 0, 1) * (this.maxZoom - this.minZoom);
   }
 
   layout(): void {
@@ -440,13 +566,20 @@ export class UpriseUICropper {
 
     this.minZoom = Math.max(
       this.options.minZoom,
+      UpriseUICropper.MIN_VISIBLE_ZOOM,
       this.frame.width / this.base.width,
       this.frame.height / this.base.height
     );
+    this.maxZoom = Math.max(this.options.maxZoom, this.minZoom);
 
-    this.zoom = Math.max(this.zoom, this.minZoom);
-    this.zoomInput.min = String(this.minZoom);
-    this.zoomInput.max = String(this.options.maxZoom);
+    if (!this.hasAppliedInitialZoom) {
+      this.zoom = this.clamp(this.options.initialZoom, this.minZoom, this.maxZoom);
+      this.hasAppliedInitialZoom = true;
+    } else {
+      this.zoom = this.clamp(this.zoom, this.minZoom, this.maxZoom);
+    }
+    this.zoomLevel = this.zoomToLevel(this.zoom);
+    this.renderControlPlacements();
     this.constrainPan();
     this.applyBorderRadius();
     this.update();
@@ -470,7 +603,7 @@ export class UpriseUICropper {
       top: `${this.frame.top}px`
     });
 
-    this.zoomInput.value = String(this.zoom);
+    this.zoomInput.value = String(this.zoomLevel * 100);
     this.updateStatus();
     this.root.dispatchEvent(new CustomEvent('cropchange', { detail: this.getCropData() }));
   }
@@ -535,6 +668,7 @@ export class UpriseUICropper {
       naturalWidth: this.natural.width,
       naturalHeight: this.natural.height,
       zoom: this.zoom,
+      zoomLevel: this.zoomLevel,
       aspectRatio: this.aspectRatio
     };
   }
@@ -572,7 +706,7 @@ export class UpriseUICropper {
   updateStatus(): void {
     const crop = this.getCropData();
     const label = this.options.aspectRatios.find((ratio) => ratio.value === this.aspectRatio)?.label || this.aspectRatio.toFixed(2);
-    this.status.value = `Image: ${this.natural.width} × ${this.natural.height}px • Zoom: ${Math.round(this.zoom * 100)}% • Crop: ${crop.width} × ${crop.height}px • Ratio: ${label}`;
+    this.status.value = `Image: ${this.natural.width} × ${this.natural.height}px • Zoom: ${Math.round(this.zoomLevel * 100)}% • Crop: ${crop.width} × ${crop.height}px • Ratio: ${label}`;
     this.status.textContent = this.status.value;
   }
 

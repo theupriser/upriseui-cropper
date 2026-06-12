@@ -101,6 +101,10 @@ p {
   gap: 8px;
 }
 
+.uui-cropper__ratio-row--hidden {
+  display: none;
+}
+
 .uui-cropper__ratio {
   appearance: none;
   -webkit-appearance: none;
@@ -143,6 +147,25 @@ p {
   border-color: var(--uui-accent);
   color: var(--uui-accent-text);
   box-shadow: none;
+}
+
+.uui-cropper__ratio-select {
+  min-width: 220px;
+  max-width: 100%;
+  border: 1px solid var(--uui-border);
+  background: var(--uui-surface);
+  color: var(--uui-text);
+  border-radius: var(--uui-radius-sm);
+  padding: 10px 12px;
+}
+
+.uui-cropper__ratio-select:focus {
+  outline: none;
+}
+
+.uui-cropper__ratio-select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--uui-accent) 35%, transparent);
+  outline-offset: 2px;
 }
 
 .uui-cropper__layout {
@@ -262,6 +285,12 @@ p {
   grid-template-columns: auto minmax(140px, 260px) auto;
   align-items: center;
   gap: 12px;
+}
+
+.uui-cropper__select--hidden,
+.uui-cropper__zoom--hidden,
+.uui-cropper__status--hidden {
+  display: none;
 }
 
 .uui-cropper__zoom {

@@ -142,6 +142,41 @@
       margin: 14px 0 0;
     }
 
+    .demo-ratio-host {
+      margin-top: 14px;
+    }
+
+    .demo-ratio-slot {
+      min-height: 1px;
+    }
+
+    .demo-control-host {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .demo-select {
+      display: grid;
+      gap: 8px;
+      width: fit-content;
+      border: 1px solid var(--uui-border);
+      background: var(--uui-surface);
+      border-radius: 18px;
+      padding: 12px 14px;
+      color: var(--uui-text);
+    }
+
+    .demo-select select {
+      min-width: 220px;
+      border: 1px solid var(--uui-border);
+      background: var(--uui-panel);
+      color: var(--uui-text);
+      border-radius: 12px;
+      padding: 8px 10px;
+    }
+
     .demo-switch {
       display: inline-flex;
       align-items: center;

@@ -32,9 +32,29 @@
           </p>
         </header>
 
+        <div class="demo-control-host">
+          <div id="selectSlot"></div>
+          <div id="zoomSlot"></div>
+          <div id="infoSlot"></div>
+        </div>
+
+        <div class="demo-ratio-host">
+          <div id="ratioSlot" class="demo-ratio-slot"></div>
+        </div>
+
         <div id="cropper" class="uui-cropper"></div>
 
         <div class="demo-control-row">
+          <label class="demo-select">
+            <span>Aspect ratio control</span>
+            <select id="ratioControlType">
+              <option value="buttons">Buttons</option>
+              <option value="dropdown">Dropdown</option>
+              <option value="external">External mount</option>
+              <option value="false">Disabled</option>
+            </select>
+          </label>
+
           <label class="demo-switch">
             <input id="viewportCheckered" type="checkbox" checked />
             Checkered viewport background

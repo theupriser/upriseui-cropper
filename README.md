@@ -1,11 +1,11 @@
-# @upriseui/cropper
+# @theupriser/upriseui-cropper
 
 Dependency-free vanilla JavaScript image cropper with fixed aspect ratios, canvas/blob export helpers, theme options, and crop lifecycle events.
 
 ## Install
 
 ```bash
-npm install @upriseui/cropper
+npm install @theupriser/upriseui-cropper
 ```
 
 ## Usage
@@ -13,8 +13,8 @@ npm install @upriseui/cropper
 Import the JavaScript and CSS:
 
 ```js
-import { UpriseUICropper } from '@upriseui/cropper';
-import '@upriseui/cropper/style.css';
+import { UpriseUICropper } from '@theupriser/upriseui-cropper';
+import '@theupriser/upriseui-cropper/style.css';
 
 const cropper = new UpriseUICropper(document.querySelector('#cropper'), {
   src: '/image.jpg',
@@ -27,12 +27,22 @@ const cropper = new UpriseUICropper(document.querySelector('#cropper'), {
     { label: '2:3 Photo', value: 2 / 3 }
   ],
   initialAspectRatio: 1,
+  showAspectRatioControl: true,
+  aspectRatioControlType: 'buttons',
+  aspectRatioControlSelector: '',
+  showSelectButton: true,
+  selectButtonSelector: '',
+  showZoom: true,
+  zoomSelector: '',
+  showImageInfo: true,
+  imageInfoSelector: '',
   viewportCheckered: true,
   viewportBackgroundColor: 'transparent',
   viewportMaskColor: null,
   borderRadius: 0,
   autoDarkMode: true,
   forceDarkMode: false,
+  initialZoom: 1,
   minZoom: 1,
   maxZoom: 5
 });
@@ -76,7 +86,7 @@ await cropper.setImage(file);
 
 ### `aspectRatios`
 
-Array of ratio buttons shown in the cropper UI.
+Array of aspect-ratio choices used by the UI controls.
 
 ```js
 aspectRatios: [
@@ -92,6 +102,78 @@ Initial crop-frame ratio.
 ```js
 initialAspectRatio: 1
 ```
+
+### `aspectRatioControlType`
+
+Controls how the aspect-ratio picker is rendered.
+
+```js
+aspectRatioControlType: 'buttons'
+```
+
+- `buttons`: renders the ratios as buttons
+- `dropdown`: renders the ratios as a `<select>`
+- `none`: hides the ratio control
+
+### `showAspectRatioControl`
+
+Set this to `false` to hide the ratio control.
+
+```js
+showAspectRatioControl: false
+```
+
+### `aspectRatioControlSelector`
+
+Optional selector for an existing container inside the cropper root. Use this when you want the ratio control rendered somewhere else in your own layout.
+
+```html
+<div id="cropper">
+  <div class="my-ratio-slot"></div>
+</div>
+```
+
+```js
+aspectRatioControlSelector: '.my-ratio-slot'
+```
+
+If set, the cropper renders the ratio control into that element instead of the built-in `.uui-cropper__ratio-row`.
+
+### `showSelectButton`
+
+Set this to `false` to hide the file select button.
+
+```js
+showSelectButton: false
+```
+
+### `selectButtonSelector`
+
+Optional selector for a container where the select button should be rendered.
+
+### `showZoom`
+
+Set this to `false` to hide the zoom slider.
+
+```js
+showZoom: false
+```
+
+### `zoomSelector`
+
+Optional selector for a container where the zoom slider should be rendered.
+
+### `showImageInfo`
+
+Set this to `false` to hide the image/crop info output.
+
+```js
+showImageInfo: false
+```
+
+### `imageInfoSelector`
+
+Optional selector for a container where the image info output should be rendered.
 
 ### `viewportCheckered`
 
@@ -159,6 +241,14 @@ minZoom: 1,
 maxZoom: 5
 ```
 
+### `initialZoom`
+
+Starting zoom level before the cropper enforces its computed minimum zoom.
+
+```js
+initialZoom: 1
+```
+
 ## Methods
 
 ```js
@@ -180,16 +270,6 @@ const canvas = cropper.getCanvas();
 const blob = await cropper.getBlob('image/png');
 
 cropper.destroy();
-```
-
-Compatibility helpers:
-
-```js
-cropper.setViewportBackground('parent');
-cropper.setViewportBackground('checkerboard');
-
-cropper.setRounded(true);
-cropper.setRounded(false);
 ```
 
 ## Events
@@ -289,6 +369,7 @@ The demo uses a mountain/lake sample image at `sample.jpg`.
 The demo includes:
 
 - aspect-ratio buttons
+- aspect-ratio dropdown / external mount / hidden control examples
 - drag and zoom controls
 - checkered/non-checkered viewport background
 - non-checkered background color controls
@@ -330,65 +411,6 @@ The source is TypeScript. The build step compiles `src/index.ts` to `dist/index.
 npm run build
 ```
 
-## Gitea package publishing workflow
-
-This package includes one Actions workflow that works for both GitHub Actions and Gitea Actions:
-
-```text
-.github/workflows/publish.yml
-```
-
-The workflow runs on pushes to `main` or `master` when package-related files change. It reads the version from `package.json` and checks for a matching git tag:
-
-```text
-v1.0.0
-```
-
-If that tag already exists, publishing is skipped. If the tag does not exist, the workflow:
-
-1. installs dependencies,
-2. runs `npm run build`,
-3. publishes the package to the Gitea npm package registry,
-4. creates and pushes the version tag.
-
-### Required repository secret
-
-Create a repository secret:
-
-```text
-GITEA_TOKEN
-```
-
-The token needs permission to publish packages and push tags. Gitea and GitHub Actions can expose different default tokens. The workflow uses `GITEA_TOKEN` when present and falls back to `GITHUB_TOKEN`, but `GITEA_TOKEN` is recommended for publishing to a Gitea package registry.
-
-### Optional repository variables
-
-Set these repository variables if your Gitea runner does not expose them automatically or you want to publish under a different package owner:
-
-```text
-GITEA_SERVER_URL=https://gitea.example.com
-PACKAGE_OWNER=your-user-or-org
-```
-
-The package is published to:
-
-```text
-https://gitea.example.com/api/packages/PACKAGE_OWNER/npm/
-```
-
-### Versioning flow
-
-To release a new version:
-
-```bash
-npm version patch
-git push
-```
-
-or manually edit `package.json`, commit the change, and push.
-
-When the workflow sees a new `package.json` version without a matching `vX.Y.Z` tag, it publishes and creates the tag automatically.
-
 ## Published npm files
 
 The npm package only ships the files consumers need:
@@ -410,7 +432,7 @@ npm pack --dry-run
 npm publish --access public
 ```
 
-The package name is currently set to `@upriseui/cropper`. Change `name` in `package.json` before publishing if that npm scope is not available.
+The package name is currently set to `@theupriser/upriseui-cropper`. Change `name` in `package.json` before publishing if that npm scope is not available.
 
 
 ## Demo import note
